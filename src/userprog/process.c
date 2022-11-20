@@ -26,24 +26,65 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
-process_execute (const char *file_name) 
+process_execute(const char *command)
 {
-  char *fn_copy;
-  tid_t tid;
+    char *command_copy = NULL, *file_name = NULL;
+    char *context;
+    tid_t tid;
 
-  /* Make a copy of FILE_NAME.
-     Otherwise there's a race between the caller and load(). */
-  fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL)
-    return TID_ERROR;
-  strlcpy (fn_copy, file_name, PGSIZE);
+    /* Make a copy of command line. Otherwise there's a race between the caller and load(). */
+    command_copy = palloc_get_page(0);
+    if (command_copy == NULL)
+        return TID_ERROR;
+    strlcpy(command_copy, command, PGSIZE);
 
-  /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+    /* Extract file_name from command line and make a copy. */
+    file_name = palloc_get_page(0);
+    if (file_name == NULL)
+        return TID_ERROR;
+    strlcpy(file_name, command, PGSIZE);
+    file_name = strtok_r(file_name, " ", &context);
 
-  if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
-  return tid;
+    /*Process ID will be determined in start_process(), 
+      so we have to postpone afterward actions 
+      (such as putting 'pcb' alongwith (determined) 'pid' into 'child_list'), 
+      using context switching.*/
+    pcb->pid = PID_INITIALIZING;
+    pcb->parent_thread = thread_current();
+
+    pcb->command = command_copy;
+    pcb->waiting = false;
+    pcb->exited = false;
+    pcb->orphan = false;
+    pcb->exitcode = -1; // undefined
+
+    sema_init(&pcb->sema_initialization, 0);
+    sema_init(&pcb->sema_wait, 0);
+
+    /* Create a new thread to execute FILE_NAME. */
+    tid = thread_create(file_name, PRI_DEFAULT, start_process, pcb);
+
+    if (tid == TID_ERROR)
+    {
+        palloc_free_page(pcb);
+        return tid;
+    }
+
+    /*Wait until initialization in start_process() is complete.*/
+    sema_down(&pcb->sema_initialization);
+    if (command_copy)
+    {
+        palloc_free_page(command_copy);
+    }
+
+    /*Process successfully created, maintain child process list*/
+    if (pcb->pid >= 0)
+    {
+        list_push_back(&(thread_current()->child_list), &(pcb->elem));
+    }
+
+    palloc_free_page(file_name);
+    return pcb->pid;
 }
 
 /* A thread function that loads a user process and starts it
