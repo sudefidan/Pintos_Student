@@ -20,71 +20,37 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static void argument_pushing(char **parse, int count, void **esp);
+# define WORD_SIZE 4
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
-process_execute(const char *command)
+process_execute(const char *file_name)
 {
-    char *command_copy = NULL, *file_name = NULL;
-    char *context;
+    char *file_copy;
+    char *ptr;
     tid_t tid;
 
     /* Make a copy of command line. Otherwise there's a race between the caller and load(). */
-    command_copy = palloc_get_page(0);
-    if (command_copy == NULL)
+    file_copy = palloc_get_page(0);
+    if (file_copy == NULL)
         return TID_ERROR;
-    strlcpy(command_copy, command, PGSIZE);
+    strlcpy(file_copy, file_name, PGSIZE);
 
-    /* Extract file_name from command line and make a copy. */
-    file_name = palloc_get_page(0);
-    if (file_name == NULL)
-        return TID_ERROR;
-    strlcpy(file_name, command, PGSIZE);
-    file_name = strtok_r(file_name, " ", &context);
-
-    /*Process ID will be determined in start_process(), 
-      so we have to postpone afterward actions 
-      (such as putting 'pcb' alongwith (determined) 'pid' into 'child_list'), 
-      using context switching.*/
-    pcb->pid = PID_INITIALIZING;
-    pcb->parent_thread = thread_current();
-
-    pcb->command = command_copy;
-    pcb->waiting = false;
-    pcb->exited = false;
-    pcb->orphan = false;
-    pcb->exitcode = -1; // undefined
-
-    sema_init(&pcb->sema_initialization, 0);
-    sema_init(&pcb->sema_wait, 0);
+    /* Extract file_name from command line. */
+    file_name = strtok_r(file_name, " ", &ptr);
 
     /* Create a new thread to execute FILE_NAME. */
-    tid = thread_create(file_name, PRI_DEFAULT, start_process, pcb);
+    tid = thread_create(file_name, PRI_DEFAULT, start_process, file_copy);
 
     if (tid == TID_ERROR)
     {
-        palloc_free_page(pcb);
-        return tid;
+        palloc_free_page(file_copy);
     }
-
-    /*Wait until initialization in start_process() is complete.*/
-    sema_down(&pcb->sema_initialization);
-    if (command_copy)
-    {
-        palloc_free_page(command_copy);
-    }
-
-    /*Process successfully created, maintain child process list*/
-    if (pcb->pid >= 0)
-    {
-        list_push_back(&(thread_current()->child_list), &(pcb->elem));
-    }
-
-    palloc_free_page(file_name);
-    return pcb->pid;
+    return tid;
 }
 
 /* A thread function that loads a user process and starts it
@@ -95,6 +61,16 @@ start_process (void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
+  char* temp[50];
+  char* token;
+  char* ptr;
+  int count = 0;
+  
+  for (token = strtok_r(file_name, " ", &ptr); token != NULL;
+      token = strtok_r(NULL, " ", &ptr))
+  {
+    temp[count++] = token;
+  }
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -103,6 +79,10 @@ start_process (void *file_name_)
   if_.eflags = FLAG_IF | FLAG_MBS;
 
   success = load (file_name, &if_.eip, &if_.esp);
+
+  argument_pushing(&temp, count, &if_.esp);
+
+  hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
   
   /* If load failed, quit. */
   palloc_free_page (file_name);
@@ -241,7 +221,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp);
+static bool setup_stack (void **esp, char * cmdline);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -362,7 +342,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   file_close (file);
   return success;
 }
-
+
 /* load() helpers. */
 
 static bool install_page (void *upage, void *kpage, bool writable);
@@ -374,15 +354,15 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
 {
   /* p_offset and p_vaddr must have the same page offset. */
   if ((phdr->p_offset & PGMASK) != (phdr->p_vaddr & PGMASK)) 
-    return false; 
+    return false;
 
   /* p_offset must point within FILE. */
   if (phdr->p_offset > (Elf32_Off) file_length (file)) 
     return false;
 
   /* p_memsz must be at least as big as p_filesz. */
-  if (phdr->p_memsz < phdr->p_filesz) 
-    return false; 
+  if (phdr->p_memsz < phdr->p_filesz)
+    return false;
 
   /* The segment must not be empty. */
   if (phdr->p_memsz == 0)
@@ -470,6 +450,46 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
     }
   return true;
 }
+/* References: J,Choi(2014), pintos. Available from: https://github.com/wookayin/pintos [accessed on 23/11/22]*/
+static void
+argument_pushing (char** parse, int argc, void **esp)
+{
+  /* Increment Counter */
+  int i;
+  int len=0;
+  int argv_addr[argc];
+  for (i = 0; i < argc; i++) {
+    len = strlen(parse[i]) + 1;
+    *esp -= len;
+    memcpy(*esp, parse[i], len);
+    argv_addr[i] = (int) *esp;
+  }
+
+  /* Word Allignment*/
+  *esp = (int)*esp & 0xfffffffc;
+
+  /* Last null*/
+  *esp -= 4;
+  *(int*)*esp = 0;
+
+  /* Use argvs to set **esp */
+  for (i = argc - 1; i >= 0; i--) {
+    *esp -= 4;
+    *(int*)*esp = argv_addr[i];
+  }
+
+  /* Set **argv*/
+  *esp -= 4;
+  *(int*)*esp = (int)*esp + 4;
+
+  /* Set argc*/
+  *esp -= 4;
+  *(int*)*esp = argc;
+
+  /* Set ret*/
+  *esp-=4;
+  *(int*)*esp = 0;
+}
 
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
@@ -484,10 +504,76 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success) {
-       *esp = PHYS_BASE-12;
+       *esp = PHYS_BASE;
       } else
         palloc_free_page (kpage);
     }
+  char *token, *temp_ptr;
+
+  char * flname_cp = malloc(strlen(file_name)+1);
+  strlcpy (flname_cp, file_name, strlen(file_name)+1);
+
+
+  /* argc calculation*/
+  enum intr_level old_level = intr_disable();
+  int argc=1;
+  /* Is the last char a space? - Only one space in the end*/
+  bool is_lastchar_space=false;  
+  for(int j=0;j!=strlen(file_name); j++){
+    if(file_name[j] == ' '){
+      if(!is_lastchar_space)
+        argc++;
+      is_lastchar_space=true;
+    }
+    else
+      is_lastchar_space=false;
+  }
+  intr_set_level (old_level);
+
+    
+  int *argv = calloc(argc,sizeof(int));
+
+  int i;
+  token = strtok_r (file_name, " ", &temp_ptr);
+  for (i=0; ; i++){
+    if(token){
+      *esp -= strlen(token) + 1;
+      memcpy(*esp,token,strlen(token) + 1);
+      argv[i]=*esp;
+      token = strtok_r (NULL, " ", &temp_ptr);
+    }else{
+      break;
+    }
+  }
+
+  /* Word alignment*/
+  *esp -= ((unsigned)*esp % WORD_SIZE);
+
+  /* Null ptr sentinel: null at argv[argc]*/
+   *esp-=sizeof(int);
+
+  /* Push address*/
+  for(i=argc-1;i>=0;i--)
+  {
+    *esp-=sizeof(int);
+    memcpy(*esp,&argv[i],sizeof(int));
+  }
+
+  /* Push argv address*/
+  int tmp = *esp;
+  *esp-=sizeof(int);
+  memcpy(*esp,&tmp,sizeof(int));
+
+  /* Push argc*/
+  *esp-=sizeof(int);
+  memcpy(*esp,&argc,sizeof(int));
+
+  /* Return address*/
+  *esp-=sizeof(int);
+  memcpy(*esp,&argv[argc],sizeof(int));
+
+  free(flname_cp);
+  free(argv);
   return success;
 }
 
