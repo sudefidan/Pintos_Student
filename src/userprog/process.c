@@ -78,7 +78,7 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
 
-  success = load (file_name, &if_.eip, &if_.esp);
+  success = load (temp[0], &if_.eip, &if_.esp);
 
   argument_pushing(&temp, count, &if_.esp);
 
