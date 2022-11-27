@@ -31,8 +31,10 @@ tid_t
 process_execute(const char *file_name)
 {
     char *file_copy;
-    char *ptr;
     tid_t tid;
+    char *ptr = NULL;
+    int file_name_length = strlen(file_name) + 1;
+    char program[file_name_length];
 
     /* Make a copy of command line. Otherwise there's a race between the caller and load(). */
     file_copy = palloc_get_page(0);
@@ -41,7 +43,10 @@ process_execute(const char *file_name)
     strlcpy(file_copy, file_name, PGSIZE);
 
     /* Extract file_name from command line. */
-    file_name = strtok_r(file_name, " ", &ptr);
+    /* Parse first argument as program name */
+    strlcpy(program, file_name, file_name_length);
+    strtok_r(program, " ", &ptr);
+    printf("\nProgram name: %s", program) ;
 
     /* Create a new thread to execute FILE_NAME. */
     tid = thread_create(file_name, PRI_DEFAULT, start_process, file_copy);
@@ -61,7 +66,7 @@ start_process (void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
-  char* temp[50];
+  char* parse[50];
   char* token;
   char* ptr;
   int count = 0;
@@ -69,8 +74,12 @@ start_process (void *file_name_)
   for (token = strtok_r(file_name, " ", &ptr); token != NULL;
       token = strtok_r(NULL, " ", &ptr))
   {
-    temp[count++] = token;
+    temp[count] = token;
+    count++;
+    printf("Tokenized Argument: %s", parse[count - 1]);
   }
+  printf("Number of tokenized arguments: %d\n",count);
+  
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -78,9 +87,9 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
 
-  success = load (temp[0], &if_.eip, &if_.esp);
+  success = load (parse[0], &if_.eip, &if_.esp);
 
-  argument_pushing(&temp, count, &if_.esp);
+  argument_pushing(parse, count, &if_.esp);
 
   hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
   
@@ -454,41 +463,57 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static void
 argument_pushing (char** parse, int argc, void **esp)
 {
-  /* Increment Counter */
-  int i;
-  int len=0;
-  int argv_addr[argc];
-  for (i = 0; i < argc; i++) {
-    len = strlen(parse[i]) + 1;
-    *esp -= len;
-    memcpy(*esp, parse[i], len);
-    argv_addr[i] = (int) *esp;
+  int i, j;
+  int length = 0;     // Argument length
+  int parse0_address; // First Argument's Adress
+  int adress[count];  // Argument adress
+
+  /*Push arguments to stack one by one*/
+  for (i = count - 1; i > -1; i--)
+  {
+    for (j = strlen(parse[i]); j > -1; j--)
+    {
+      *esp = *esp - 1;
+      **(char **)esp = parse[i][j];
+      length++; /*Count lengtg of arguments we pushed*/
+    }
+    /*Store address of argument*/
+    address[i] = *(unsigned int *)esp;
+    printf("Adress of %d 's argument: %d", i + 1, adress[i]);
   }
 
+  printf("Number of arguments pushed onto stack: %d", length);
+
   /* Word Allignment*/
-  *esp = (int)*esp & 0xfffffffc;
+  for (i = 0; i < 4 - (parse_count % 4); i++)
+  {
+    *esp = *esp - 1;
+    **(uint8_t **)esp = 0;
+  }
 
-  /* Last null*/
+  /* Last argument needs to be NULL*/
   *esp -= 4;
-  *(int*)*esp = 0;
+  **(char ***)esp = 0;
 
-  /* Use argvs to set **esp */
-  for (i = argc - 1; i >= 0; i--) {
+  /*Push argument adress - Use counter to set **esp */
+  for (i = count - 1; i >= 0; i--)
+  {
     *esp -= 4;
-    *(int*)*esp = argv_addr[i];
+    **(char ***)esp = address[i];
   }
 
   /* Set **argv*/
+  parse0_address = *(unsigned int *)esp;
   *esp -= 4;
-  *(int*)*esp = (int)*esp + 4;
+  **(char ***)esp = (char *)parse0_address;
 
-  /* Set argc*/
+  /* Set counter*/
   *esp -= 4;
-  *(int*)*esp = argc;
+  *(int *)*esp = count;
 
-  /* Set ret*/
-  *esp-=4;
-  *(int*)*esp = 0;
+  /*Fake Adress - Set ret*/
+  *esp -= 4;
+  *(int *)*esp = 0;
 }
 
 /* Create a minimal stack by mapping a zeroed page at the top of
@@ -505,75 +530,11 @@ setup_stack (void **esp)
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success) {
        *esp = PHYS_BASE;
-      } else
+      }
+      else{
         palloc_free_page (kpage);
+      }
     }
-  char *token, *temp_ptr;
-
-  char * flname_cp = malloc(strlen(file_name)+1);
-  strlcpy (flname_cp, file_name, strlen(file_name)+1);
-
-
-  /* argc calculation*/
-  enum intr_level old_level = intr_disable();
-  int argc=1;
-  /* Is the last char a space? - Only one space in the end*/
-  bool is_lastchar_space=false;  
-  for(int j=0;j!=strlen(file_name); j++){
-    if(file_name[j] == ' '){
-      if(!is_lastchar_space)
-        argc++;
-      is_lastchar_space=true;
-    }
-    else
-      is_lastchar_space=false;
-  }
-  intr_set_level (old_level);
-
-    
-  int *argv = calloc(argc,sizeof(int));
-
-  int i;
-  token = strtok_r (file_name, " ", &temp_ptr);
-  for (i=0; ; i++){
-    if(token){
-      *esp -= strlen(token) + 1;
-      memcpy(*esp,token,strlen(token) + 1);
-      argv[i]=*esp;
-      token = strtok_r (NULL, " ", &temp_ptr);
-    }else{
-      break;
-    }
-  }
-
-  /* Word alignment*/
-  *esp -= ((unsigned)*esp % WORD_SIZE);
-
-  /* Null ptr sentinel: null at argv[argc]*/
-   *esp-=sizeof(int);
-
-  /* Push address*/
-  for(i=argc-1;i>=0;i--)
-  {
-    *esp-=sizeof(int);
-    memcpy(*esp,&argv[i],sizeof(int));
-  }
-
-  /* Push argv address*/
-  int tmp = *esp;
-  *esp-=sizeof(int);
-  memcpy(*esp,&tmp,sizeof(int));
-
-  /* Push argc*/
-  *esp-=sizeof(int);
-  memcpy(*esp,&argc,sizeof(int));
-
-  /* Return address*/
-  *esp-=sizeof(int);
-  memcpy(*esp,&argv[argc],sizeof(int));
-
-  free(flname_cp);
-  free(argv);
   return success;
 }
 

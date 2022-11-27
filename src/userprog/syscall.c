@@ -13,12 +13,12 @@ int syscall_wait(pid_t pid);
 bool syscall_create(const char* file_name, unsigned initial_size);
 bool syscall_remove(const char* file_name, unsigned initial_size);
 
+bool is_file_locked = false;
+
 /*System call initializer*/
 void
 syscall_init (void)
 {
-  //LOOK AT LOCK_INIT
-  lock_init (&filesys_lock);
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
@@ -26,17 +26,21 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f)
 {
-  //LOOK AGAIN UNTIL SWITCH-CASE
-  if (!FILE_LOCK_INIT)
+  /*If file_system_lock has not initiliazed yet, initialize it as a new lock. */
+  if (!is_file_locked)
   {
+    /*Initializes filesys_lock as a new lock. The lock is not initially owned by any thread.*/
     lock_init(&file_system_lock);
-    FILE_LOCK_INIT = true;
+    is_file_locked = true;
   }
-  
+  /* References: J,Choi(2014), pintos. Available from: https://github.com/wookayin/pintos [accessed on 27/11/22]*/
   int syscall_number;
-  ASSERT( sizeof(syscall_number) == 4 ); // 4byte x86
+  ASSERT( sizeof(syscall_number) == 4 ); /*assuming x86*/ 
 
+  /*The system call number is in the 32-bit word at the caller's stack pointer.*/ 
   read(f->esp, &syscall_number, sizeof(syscall_number));
+
+  /*Store the esp, which is needed in the page fault handler.*/ 
   thread_current()->current_esp = f->esp;
 
   switch (syscall_number) {
@@ -115,13 +119,11 @@ void syscall_halt(void) {
 
 /* Exit */
 void syscall_exit(int status) {
-  printf("%s: exit(%d)\n", thread_current()->name, status);
-  //LOOK AT PCB
-  struct process_control_block *pcb = thread_current()->pcb;
-  if(pcb != NULL) {
-    pcb->exitcode = status;
-  }
-  
+  struct thread *current_process=thread_current();
+  current_process->process_exit_status = status; 
+
+  printf("%s: exit(%d)\n",current_process->name,status);
+
   thread_exit();
 }
 
@@ -134,11 +136,15 @@ int syscall_wait(pid_t pid)
 /* Create File */
 bool syscall_create(const char* file_name, unsigned initial_size) {
   bool if_created = false;
-  //LOOK AT ACQUIRE AND RELEASE
+
+  /* Acquire lock, sleep until necessary */
   lock_acquire (&filesys_lock);
+
   if( filesys_create(file_name, initial_size)==true){
     if_created = true;
   }
+
+  /* Release lock, owned by current thread */
   lock_release (&filesys_lock);
   return if_created;
 }
@@ -146,11 +152,15 @@ bool syscall_create(const char* file_name, unsigned initial_size) {
 /* Remove File */
 bool syscall_remove(const char* file_name, unsigned initial_size) {
   bool if_removed = false;
-  //LOOK AT ACQUIRE AND RELEASE
+
+  /* Acquire lock, sleep until necessary */
   lock_acquire (&filesys_lock);
+
   if( filesys_remove(file_name, initial_size)==true){
     if_removed = true;
   }
+
+  /* Release lock, owned by current thread */
   lock_release (&filesys_lock);
   return if_removed;
 }
