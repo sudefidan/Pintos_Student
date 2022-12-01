@@ -4,6 +4,7 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -133,8 +134,6 @@ static int read(void *src, void *dst, size_t bytes)
   {
     value = get_user(src + i);
     if (value == -1) // segfault or invalid memory access
-      fail_invalid_access();
-
     *(char *)(dst + i) = value & 0xff;
   }
   return (int)bytes;
