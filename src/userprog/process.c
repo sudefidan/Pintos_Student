@@ -45,7 +45,7 @@ process_execute(const char *file_name)
   /* Parse first argument as program name */
   strlcpy(program, file_name, file_name_length);
   strtok_r(program, " ", &ptr);
-  printf("\nProgram name: %s\n", program) ;
+  printf("\nProgram name: %s\n\n", program) ;
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(file_name, PRI_DEFAULT, start_process, file_copy);
