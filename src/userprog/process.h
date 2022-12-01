@@ -2,6 +2,7 @@
 #define USERPROG_PROCESS_H
 
 #include "threads/thread.h"
+typedef int pid_t;
 
 typedef int pit_t;
 #define PID_ERROR ((pid_t)-1)
