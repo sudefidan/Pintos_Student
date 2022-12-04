@@ -20,7 +20,8 @@
 
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp);
-static void argument_pushing(char **parse, int count, void **esp);
+
+
 #define WORD_SIZE 4
 
 /* Starts a new thread running a user program loaded from
@@ -56,7 +57,78 @@ process_execute(const char *file_name)
   }
   return tid;
 }
+/* add file to file descriptor */
+int  process_add_file(struct file *f)
+{
+	struct file **fd = NULL;
+	int nextFd;
 
+	fd = thread_current()->file_descriptor;
+	nextFd = thread_current()->next_fd;
+
+	if(fd != NULL)
+	{
+		fd[nextFd] = f;
+		thread_current()->next_fd = thread_current()->next_fd+1;
+		return nextFd;
+	}
+	else
+	{
+		return -1;
+	}
+}
+/* get struct file  */
+struct file *process_get_file(int fd)
+{
+	struct file *pReturn;
+	if(fd < thread_current()->next_fd)
+	{
+		pReturn = thread_current()->file_descriptor[fd];
+		return pReturn;
+	}
+	else
+	{
+		return NULL;
+	}
+}
+/* close file function */
+void
+process_close_file(int fd)
+{
+	struct file *delete_file;
+	delete_file = process_get_file(fd);
+	if(delete_file != NULL)
+	{
+		file_close(delete_file);
+		thread_current()->file_descriptor[fd] = NULL;
+	}
+}
+/* get_child_process */
+struct thread *get_child_process(int pid)
+{
+	struct list *child_list=&(thread_current()->child_list);
+	struct thread *child_process = NULL;
+	struct list_elem *element;
+
+	/* find child process and return */
+	for(element=list_begin(child_list); element != list_end(child_list);            		element=list_next(element))
+	{
+		child_process = list_entry(element,struct thread,childelem);
+		if(child_process->tid == pid)
+			return child_process;
+	}
+	return NULL;     
+}
+/* remove_child_process */
+void
+remove_child_process(struct thread *cp)
+{
+	if(cp != NULL)
+	{
+		list_remove(&(cp->childelem));
+		palloc_free_page(cp);
+	}
+}
 /* A thread function that loads a user process and starts it
    running. */
 static void
@@ -88,8 +160,9 @@ start_process(void *file_name_)
   success = load(parse[0], &if_.eip, &if_.esp);
 
   argument_pushing(&parse, count, &if_.esp);
+  sema_up(&(thread_current()->load_semaphore));
 
-  hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
+  //hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
 
   /* If load failed, quit. */
   palloc_free_page(file_name);
@@ -451,7 +524,7 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
   return true;
 }
 /* References: J,Choi(2014), pintos. Available from: https://github.com/wookayin/pintos [accessed on 23/11/22]*/
-static void
+void
 argument_pushing(char **parse, int count, void **esp)
 {
   int i, j;
@@ -490,13 +563,13 @@ argument_pushing(char **parse, int count, void **esp)
   for (i = count - 1; i >= 0; i--)
   {
     *esp -= 4;
-    **(char ***)esp = address[i];
+    **(char* **)esp = (char *)address[i];
   }
 
   /* Set **argv*/
   parse0_address = *(unsigned int *)esp;
   *esp -= 4;
-  **(char ***)esp = (char *)parse0_address;
+  **(char* **)esp = (char *)parse0_address;
 
   /* Set counter*/
   *esp -= 4;
@@ -547,3 +620,4 @@ install_page(void *upage, void *kpage, bool writable)
 }
 
 //--------------------------------------------------------------------
+

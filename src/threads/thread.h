@@ -81,8 +81,9 @@ typedef int tid_t;
    ready state is on the run queue, whereas only a thread in the
    blocked state is on a semaphore wait list. */
 struct thread
-  {
+{
     /* Owned by thread.c. */
+      struct list_elem childelem;
     tid_t tid;                          /* Thread identifier. */
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
@@ -104,9 +105,16 @@ struct thread
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
     /* VALUE */
-	bool process_exit;
-	int process_exit_status;
-  };
+      struct file **file_descriptor;
+      int next_fd;
+      bool load_success;
+      bool process_exit;
+      int process_exit_status;
+      struct semaphore load_semaphore;
+      struct semaphore exit_semaphore;
+      struct thread *parent_thread;
+      struct list child_list;
+};
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.

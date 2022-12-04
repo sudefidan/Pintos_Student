@@ -59,7 +59,8 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
-
+/* file descriptor lock */
+struct lock file_lock;
 static void kernel_thread (thread_func *, void *aux);
 
 static void idle (void *aux UNUSED);
@@ -179,6 +180,7 @@ thread_create (const char *name, int priority,
   struct switch_entry_frame *ef;
   struct switch_threads_frame *sf;
   tid_t tid;
+  enum intr_level old_level;
 
   ASSERT (function != NULL);
 
@@ -190,6 +192,11 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
+
+  /* Prepare thread for first run by initializing its stack.
+     Do this atomically so intermediate values for the 'stack' 
+     member cannot be observed. */
+  old_level = intr_disable ();
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -205,6 +212,21 @@ thread_create (const char *name, int priority,
   sf = alloc_frame (t, sizeof *sf);
   sf->eip = switch_entry;
   sf->ebp = 0;
+
+  intr_set_level (old_level);
+  /* Set Value */
+  t->next_fd = 2;
+  t->file_descriptor = palloc_get_page(0);
+  if(t->file_descriptor == NULL)
+	  return TID_ERROR;
+  t->childelem.next = NULL;
+  t->childelem.prev = NULL;
+  t->parent_thread = thread_current();
+  t->load_success = false;
+  t->process_exit = false;
+  sema_init(&(t->load_semaphore),0);
+  sema_init(&(t->exit_semaphore),0);
+  list_push_back(&(thread_current()->child_list),&(t->childelem));
 
   /* Add to run queue. */
   thread_unblock (t);

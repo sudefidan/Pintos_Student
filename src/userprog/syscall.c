@@ -5,6 +5,11 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include <devices/shutdown.h>
+#include <filesys/filesys.h>
+#include <filesys/file.h>
+#include <userprog/process.h>
+#include <devices/input.h>
 
 static void syscall_handler (struct intr_frame *);
 
@@ -19,59 +24,41 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f UNUSED)
 {
-  /* References: J,Choi(2014), pintos. Available from: https://github.com/wookayin/pintos [accessed on 27/11/22]*/
   int syscall_number;
-  ASSERT( sizeof(syscall_number) == 4 ); /*assuming x86*/
+  int argument[5];
+  void *esp = f->esp;
 
-  /*The system call number is in the 32-bit word at the caller's stack pointer.*/
-  read(f->esp, &syscall_number, sizeof(syscall_number));
-
-  /*Store the esp, which is needed in the page fault handler.*/
-  thread_current()->current_esp = f->esp;
+  check_address(esp);
+  syscall_number = *(int *)esp;
 
   switch (syscall_number) {
-  case SYS_HALT: // 0
-    {
+    case SYS_HALT: // 0
       /*Terminate PintOS*/
       syscall_halt();
       break;
-    }
+    case SYS_EXIT: //1
+		  get_argument(esp,argument,1);
+		  syscall_exit(argument[0]);
+		  break;
     case SYS_WAIT: // 2
-    {
-      tid_t tid;
-      /*Get argument*/
-      read(f->esp + 4, &tid, sizeof(tid_t));
-      /*Wait for child process*/
-      f->eax = syscall_wait(tid);
+      get_argument(esp,argument,1);
+		  f->eax = syscall_wait(argument[0]);
       break;
-    }
-
     case SYS_CREATE: // 3
-    {
-      const char* file_name;
-      unsigned initial_size;
-
-      /*Get file name and size*/
-      read(f->esp + 4, &file_name, sizeof(file_name));
-      read(f->esp + 8, &initial_size, sizeof(initial_size));
-
-      /*Create file*/
-      f->eax =  syscall_create(file_name, initial_size);
+      get_argument(esp,argument,2);
+		  check_address((void *)argument[0]);
+		  f->eax = syscall_create((const char *)argument[0],(unsigned)argument[1]);
       break;
-    }
-
     case SYS_REMOVE: // 4
-    {
-      const char* file_name;
-      bool return_code;
-
-      /*Get file name*/
-      read(f->esp + 4, &file_name, sizeof(file_name));
-
-      /*Remove file*/
-      f->eax = syscall_remove(file_name);
-      break;
-    }
+      get_argument(esp,argument,1);
+		  check_address((void *)argument[0]);
+		  f->eax=syscall_remove((const char *)argument[0]);
+		  break;
+    case SYS_WRITE: //5
+		  get_argument(esp,argument,3);
+		  check_address((void *)argument[1]);
+		  f->eax = syscall_write(argument[0],(void *)argument[1],(unsigned)argument[2]);
+		  break;
     /* Unimplemented system calls */
     default:
         printf("ERROR: system call ( %d ) has not implemented!\n", syscall_number);
@@ -124,31 +111,52 @@ bool syscall_remove(const char* file_name) {
   return if_removed;
 }
 
+/* write file */
+int syscall_write(int fd, void *buffer, unsigned size)
+{
+	int write_size = 0;
+	struct file *current_file;
 
+	if(fd == 1)                    /*stdout */
+	{ 
+		putbuf((const char *)buffer,size);
+		write_size = size;
+	}
+	else
+	{
+		current_file = process_get_file(fd);
+		if(current_file != NULL)
+			write_size = file_write(current_file,(const void *)buffer,size);
+	}
+	return write_size;
+} 
 /****OTHER FUNCTIONS****/
-static int read(void *src, void *dst, size_t bytes)
+void
+check_address(void *addr)
 {
-  int32_t value;
-  size_t i;
-  for (i = 0; i < bytes; i++)
-  {
-    value = get_user(src + i);
-    if (value == -1) // segfault or invalid memory access
-    *(char *)(dst + i) = value & 0xff;
-  }
-  return (int)bytes;
+	uint32_t address=(unsigned int)addr;
+
+	uint32_t lowest=0x8048000;
+	uint32_t highest=0xc0000000;
+	if(address >= lowest && address < highest){
+		return;
+	}
+	else{
+		syscall_exit(-1);
+	}
 }
-/* Reads a byte at user virtual address UADDR.
-   UADDR must be below PHYS_BASE.
-   Returns the byte value if successful, -1 if a segfault
-   occurred. */
-static int
-get_user (const uint8_t *uaddr)
+/* get_argument function */
+void
+get_argument(void *esp, int *argument, int count)
 {
-  if(!is_user_vaddr(uaddr))
-    return -1;
-  int result;
-  asm ("movl $1f, %0; movzbl %1, %0; 1:"
-       : "=&a" (result) : "m" (*uaddr));
-  return result;
+	int i;
+	void *stack_ptr=esp+4;
+	if(count > 0)
+	{
+		for(i=0; i<count; i++){
+			check_address(stack_ptr);
+			argument[i] = *(int *)stack_ptr;
+			stack_ptr = stack_ptr + 4;
+		}
+	}
 }
