@@ -4,14 +4,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "threads/thread.h"
-#include <stdbool.h>
-#include <stddef.h>
-
 void syscall_init (void);
 
 void check_address(void *addr);
-void get_argument(void *esp, int *arg, int count);
+void get_argument(void *esp, int *argument, int count);
 
 void syscall_halt(void);
 void syscall_exit(int status);

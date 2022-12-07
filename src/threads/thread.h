@@ -4,6 +4,8 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
+#include "lib/kernel/list.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -81,9 +83,9 @@ typedef int tid_t;
    ready state is on the run queue, whereas only a thread in the
    blocked state is on a semaphore wait list. */
 struct thread
-{
+  {
     /* Owned by thread.c. */
-      struct list_elem childelem;
+	struct list_elem childelem;         /* List element for child_list */  
     tid_t tid;                          /* Thread identifier. */
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
@@ -93,28 +95,29 @@ struct thread
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-      
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
     uint8_t *current_esp;               /* The current value of the user program’s stack pointer.
-                                           A page fault might occur in the kernel, so we might
-                                           need to store esp on transition to kernel mode*/
+                                             A page fault might occur in the kernel, so we might
+                                             need to store esp on transition to kernel mode*/
 #endif
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
     /* VALUE */
-      struct file **file_descriptor;
-      int next_fd;
-      bool load_success;
-      bool process_exit;
-      int process_exit_status;
-      struct semaphore load_semaphore;
-      struct semaphore exit_semaphore;
-      struct thread *parent_thread;
-      struct list child_list;
-};
+	struct file **file_descriptor;
+	int next_fd;
+	bool load_success;
+	bool process_exit;
+	int process_exit_status;
+	struct semaphore load_semaphore;
+	struct semaphore exit_semaphore;
+	struct thread *parent_thread;
+	struct list child_list;
+
+  };
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.

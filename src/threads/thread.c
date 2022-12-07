@@ -321,6 +321,10 @@ thread_exit (void)
      when it calls thread_schedule_tail(). */
   intr_disable ();
   list_remove (&thread_current()->allelem);
+  thread_current()->process_exit = true;
+  if(thread_current() != initial_thread){
+	  sema_up(&(thread_current()->exit_semaphore));
+  }
   thread_current ()->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
@@ -496,9 +500,11 @@ init_thread (struct thread *t, const char *name, int priority)
 
   //t->is_kernel = is_kernel;
 
-  old_level = intr_disable ();
+  //old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
-  intr_set_level (old_level);
+  //intr_set_level (old_level);
+  /* child process list init*/
+  list_init(&(t->child_list));
 }
 
 

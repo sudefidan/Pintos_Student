@@ -46,7 +46,7 @@ process_execute(const char *file_name)
   /* Parse first argument as program name */
   strlcpy(program, file_name, file_name_length);
   strtok_r(program, " ", &ptr);
-  printf("\nProgram name: %s\n\n", program) ;
+  printf("\nProgram name: %s\n", program) ;
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(file_name, PRI_DEFAULT, start_process, file_copy);
@@ -137,7 +137,7 @@ start_process(void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
-  char *parse[250];
+  char *parse[255];
   char *token;
   char *ptr;
   int count = 0;
@@ -159,6 +159,10 @@ start_process(void *file_name_)
 
   success = load(parse[0], &if_.eip, &if_.esp);
 
+  /* load finished sema up */
+  thread_current()->load_success=success;
+
+  /* push arguments */
   argument_pushing(&parse, count, &if_.esp);
   sema_up(&(thread_current()->load_semaphore));
 
@@ -532,6 +536,9 @@ argument_pushing(char **parse, int count, void **esp)
   int parse0_address; // First Argument's Adress
   int address[count];  // Argument adress
 
+  if(parse==NULL)
+	  return;
+
   /*Push arguments to stack one by one*/
   for (i = count - 1; i > -1; i--)
   {
@@ -543,11 +550,9 @@ argument_pushing(char **parse, int count, void **esp)
     }
     /*Store address of argument*/
     address[i] = *(unsigned int *)esp;
-    printf("\nAdress of %d 's argument: %d\n", i + 1, address[i]);
+    printf("\nAddress of %d 's argument: %d\n", i + 1, address[i]);
   }
-
   printf("\nNumber of arguments pushed onto stack: %d\n", length);
-
   /* Word Allignment*/
   for (i = 0; i < 4 - (length % 4); i++)
   {
@@ -556,28 +561,28 @@ argument_pushing(char **parse, int count, void **esp)
   }
 
   /* Last argument needs to be NULL*/
-  *esp -= 4;
-  **(char ***)esp = 0;
+   *esp=*esp-4;
+  **(char* **)esp = 0;
 
   /*Push argument adress - Use counter to set **esp */
   for (i = count - 1; i >= 0; i--)
   {
-    *esp -= 4;
+     *esp=*esp-4;
     **(char* **)esp = (char *)address[i];
   }
 
-  /* Set **argv*/
+  /* Set **argv - Main argv*/
   parse0_address = *(unsigned int *)esp;
-  *esp -= 4;
+  *esp=*esp-4;
   **(char* **)esp = (char *)parse0_address;
 
-  /* Set counter*/
-  *esp -= 4;
-  *(int *)*esp = count;
+  /* Set counter - Main argc*/
+  *esp=*esp-4;
+  **(int **)esp=count;
 
   /*Fake Adress - Set ret*/
-  *esp -= 4;
-  *(int *)*esp = 0;
+  *esp=*esp-4;
+  **(int **)esp=0;
 }
 
 /* Create a minimal stack by mapping a zeroed page at the top of

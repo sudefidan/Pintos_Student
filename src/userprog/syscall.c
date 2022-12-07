@@ -32,39 +32,38 @@ syscall_handler (struct intr_frame *f UNUSED)
   syscall_number = *(int *)esp;
 
   switch (syscall_number) {
-    case SYS_HALT: // 0
-      /*Terminate PintOS*/
-      syscall_halt();
-      break;
+	case SYS_HALT: // 0
+        /*Terminate PintOS*/
+        syscall_halt();
+        break;
     case SYS_EXIT: //1
-		  get_argument(esp,argument,1);
-		  syscall_exit(argument[0]);
-		  break;
+		get_argument(esp,argument,1);
+		syscall_exit(argument[0]);
+		break;
     case SYS_WAIT: // 2
-      get_argument(esp,argument,1);
-		  f->eax = syscall_wait(argument[0]);
-      break;
+        get_argument(esp,argument,1);
+		f->eax = syscall_wait(argument[0]);
+        break;
     case SYS_CREATE: // 3
-      get_argument(esp,argument,2);
-		  check_address((void *)argument[0]);
-		  f->eax = syscall_create((const char *)argument[0],(unsigned)argument[1]);
-      break;
+        get_argument(esp,argument,2);
+		check_address((void *)argument[0]);
+		f->eax = syscall_create((const char *)argument[0],(unsigned)argument[1]);
+        break;
     case SYS_REMOVE: // 4
-      get_argument(esp,argument,1);
-		  check_address((void *)argument[0]);
-		  f->eax=syscall_remove((const char *)argument[0]);
-		  break;
+        get_argument(esp,argument,1);
+		check_address((void *)argument[0]);
+		f->eax=syscall_remove((const char *)argument[0]);
+		break;
     case SYS_WRITE: //5
-		  get_argument(esp,argument,3);
-		  check_address((void *)argument[1]);
-		  f->eax = syscall_write(argument[0],(void *)argument[1],(unsigned)argument[2]);
-		  break;
-    /* Unimplemented system calls */
+		get_argument(esp,argument,3);
+		check_address((void *)argument[1]);
+		f->eax = syscall_write(argument[0],(void *)argument[1],(unsigned)argument[2]);
+		break;
+    /* Unimplemented system calls 	*/
     default:
         printf("ERROR: system call ( %d ) has not implemented!\n", syscall_number);
-
     /* Terminate. */
-    syscall_exit(-1);
+    syscall_exit(-1)
     break;
   }
 }
