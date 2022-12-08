@@ -19,6 +19,8 @@ ls_SRC = ls.c
 recursor_SRC = recursor.c
 rm_SRC = rm.c
 my_SRC = my.c
+crack_SRC = crack.c
+shellcode_SRC = shellcode.c
 
 # Should work in project 3; also in project 4 if VM is included.
 bubsort_SRC = bubsort.c
