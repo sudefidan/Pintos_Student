@@ -63,7 +63,7 @@ syscall_handler (struct intr_frame *f UNUSED)
     default:
         printf("ERROR: system call ( %d ) has not implemented!\n", syscall_number);
     /* Terminate. */
-    syscall_exit(-1)
+    syscall_exit(-1);
     break;
   }
 }
