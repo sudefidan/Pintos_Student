@@ -40,21 +40,23 @@ syscall_handler (struct intr_frame *f UNUSED)
 		get_argument(esp,argument,1);
 		syscall_exit(argument[0]);
 		break;
-    case SYS_WAIT: // 2
+    case SYS_EXEC: // 2 (TODO: Change to execute)
+		printf("System Executing...");
         get_argument(esp,argument,1);
-		f->eax = syscall_wait(argument[0]);
-        break;
-    case SYS_CREATE: // 3
+		check_address((void *)argument[0]);
+		f->eax = syscall_exec((const char *)argument[0]);
+		break;
+    case SYS_CREATE: // 4
         get_argument(esp,argument,2);
 		check_address((void *)argument[0]);
 		f->eax = syscall_create((const char *)argument[0],(unsigned)argument[1]);
         break;
-    case SYS_REMOVE: // 4
+    case SYS_REMOVE: // 5
         get_argument(esp,argument,1);
 		check_address((void *)argument[0]);
 		f->eax=syscall_remove((const char *)argument[0]);
 		break;
-    case SYS_WRITE: //5
+    case SYS_WRITE: //9
 		get_argument(esp,argument,3);
 		check_address((void *)argument[1]);
 		f->eax = syscall_write(argument[0],(void *)argument[1],(unsigned)argument[2]);
@@ -86,10 +88,31 @@ void syscall_exit(int status) {
   thread_exit();
 }
 
-/* Wait */
-int syscall_wait(tid_t tid)
+/* Execute */
+/* create child process and wait until childprocess is loaded */
+/* runs the executable whose name is given */
+tid_t
+syscall_exec(const char *argument)
 {
-  return process_wait(tid);
+	printf("Exec : %s\n", argument);
+	/*dynamically create struct child*/
+	struct thread *child_process;
+	/*new process'c program id*/
+	tid_t pid;
+	
+	pid = process_execute(argument);
+	/* the child calls sema_up after the done in load()*/
+	child_process = get_child_process(pid);
+	/*Call sema_down before we return, so parent process cannot return from the exec call 
+	until it knows that the child process has loaded or not. 
+	Only the parent process proceed past the sema_down line and return.*/	
+	sema_down(&(child_process->load_semaphore));      
+	if(child_process->load_success==true)
+		return pid;
+	else
+	{
+		return -1;
+	}
 }
 
 /* Create File */

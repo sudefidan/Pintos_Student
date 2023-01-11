@@ -11,7 +11,8 @@ void get_argument(void *esp, int *argument, int count);
 
 void syscall_halt(void);
 void syscall_exit(int status);
-int syscall_wait(tid_t tid);
+tid_t 
+syscall_exec(const char *command);
 bool syscall_create(const char* file_name, unsigned initial_size);
 bool syscall_remove(const char* file_name);
 int syscall_write(int fd, void *buffer, unsigned size);
