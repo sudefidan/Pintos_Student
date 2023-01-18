@@ -41,7 +41,6 @@ syscall_handler (struct intr_frame *f UNUSED)
 		syscall_exit(argument[0]);
 		break;
     case SYS_EXEC: // 2 (TODO: Change to execute)
-		printf("System Executing...");
         get_argument(esp,argument,1);
 		check_address((void *)argument[0]);
 		f->eax = syscall_exec((const char *)argument[0]);
@@ -72,7 +71,6 @@ syscall_handler (struct intr_frame *f UNUSED)
 
 
 /********SYSTEMCALLS********/
-
 /* Halt */
 void syscall_halt(void) {
   shutdown_power_off(); /* From shutdown.h */
@@ -94,7 +92,8 @@ void syscall_exit(int status) {
 tid_t
 syscall_exec(const char *argument)
 {
-	printf("Exec : %s\n", argument);
+	printf("System executing %s ...\n", argument);
+
 	/*dynamically create struct child*/
 	struct thread *child_process;
 	/*new process'c program id*/
@@ -152,6 +151,8 @@ int syscall_write(int fd, void *buffer, unsigned size)
 	}
 	return write_size;
 } 
+
+/* References: G,Ko(2015), pintos. Available from: https://github.com/GunjuKo/pintos [accessed on 30/11/22]*/
 /****OTHER FUNCTIONS****/
 void
 check_address(void *addr)
@@ -167,6 +168,8 @@ check_address(void *addr)
 		syscall_exit(-1);
 	}
 }
+
+/* References: G,Ko(2015), pintos. Available from: https://github.com/GunjuKo/pintos [accessed on 30/11/22]*/
 /* get_argument function */
 void
 get_argument(void *esp, int *argument, int count)

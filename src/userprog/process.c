@@ -46,7 +46,7 @@ process_execute(const char *file_name)
   /* Parse first argument as program name */
   strlcpy(program, file_name, file_name_length);
   strtok_r(program, " ", &ptr);
-  printf("\nProgram name: %s\n", program) ;
+  printf("Program name: %s\n", program) ;
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(file_name, PRI_DEFAULT, start_process, file_copy);
@@ -129,6 +129,7 @@ remove_child_process(struct thread *cp)
 		palloc_free_page(cp);
 	}
 }
+/* References: G,Ko(2015), pintos. Available from: https://github.com/GunjuKo/pintos [accessed on 20/11/22]*/
 /* A thread function that loads a user process and starts it
    running. */
 static void
@@ -147,9 +148,9 @@ start_process(void *file_name_)
   {
     parse[count] = token;
     count++;
-    printf("\nTokenized Argument: %s\n", parse[count - 1]);
+    printf("Tokenized Argument: %s\n", parse[count - 1]);
   }
-  printf("\nNumber of tokenized Arguments : %d\n", count);
+  printf("Number of tokenized Arguments : %d\n", count);
 
   /* Initialize interrupt frame and load executable. */
   memset(&if_, 0, sizeof if_);
@@ -550,9 +551,7 @@ argument_pushing(char **parse, int count, void **esp)
     }
     /*Store address of argument*/
     address[i] = *(unsigned int *)esp;
-    printf("\nAddress of %d 's argument: %d\n", i + 1, address[i]);
   }
-  printf("\nNumber of arguments pushed onto stack: %d\n", length);
   /* Word Allignment*/
   for (i = 0; i < 4 - (length % 4); i++)
   {
