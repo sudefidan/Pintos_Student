@@ -40,7 +40,7 @@ syscall_handler (struct intr_frame *f UNUSED)
 		get_argument(esp,argument,1);
 		syscall_exit(argument[0]);
 		break;
-    case SYS_EXEC: // 2 (TODO: Change to execute)
+    case SYS_EXEC: // 2 
         get_argument(esp,argument,1);
 		check_address((void *)argument[0]);
 		f->eax = syscall_exec((const char *)argument[0]);
